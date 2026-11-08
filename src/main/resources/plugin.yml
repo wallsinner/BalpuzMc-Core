@@ -1,0 +1,33 @@
+name: BalpuzMc-Core
+version: 1.0-SNAPSHOT
+main: com.balpuzmc.core.BalpuzCore
+api-version: '1.21'
+commands:
+  rtp:
+    description: Dunya ve boyut secim menusu
+  rtpq:
+    description: Baska bir oyuncuyla rastgele isinlanma
+  pazar:
+    description: Eşya alim satim pazari
+  siparis:
+    description: Oyuncu siparis sistemi
+  sat:
+    description: Envanter satis menusu
+  tpa:
+    description: Oyuncuya isinlanma istegi
+  tpaccept:
+    description: Isinlanma istegini kabul et
+  tpdeny:
+    description: Isinlanma istegini reddet
+  tphere:
+    description: Oyuncuyu yanina cekme istegi
+  invsee:
+    description: Oyuncu envanterini inceleme (OP)
+  ametist:
+    description: Ozel ametist aletler (OP)
+  para:
+    description: Para gonderimi ve yonetimi
+  shard:
+    description: Shard gonderimi ve yonetimi
+  warp:
+    description: Isinlanma noktasi yonetimi
