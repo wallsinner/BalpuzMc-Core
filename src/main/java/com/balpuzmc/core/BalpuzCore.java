@@ -46,7 +46,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         
         startClearLagTask();
         startScoreboardTask();
-        startKeyTimerTask();
 
         getLogger().info("BalpuzMc-Core 1.21.4 (Java 21) aktif edildi!");
     }
@@ -59,17 +58,25 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
     public static BalpuzCore getInstance() { return instance; }
 
     private void loadCustomConfig() {
+        if (!getDataFolder().exists()) {
+            getDataFolder().mkdirs();
+        }
         dataFile = new File(getDataFolder(), "userdata.yml");
         if (!dataFile.exists()) {
-            dataFile.getParentFile().mkdirs();
-            saveResource("userdata.yml", false);
+            try {
+                dataFile.createNewFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
         dataConfig = YamlConfiguration.loadConfiguration(dataFile);
     }
 
     public void saveCustomConfig() {
         try {
-            dataConfig.save(dataFile);
+            if (dataConfig != null && dataFile != null) {
+                dataConfig.save(dataFile);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -115,7 +122,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         return true;
     }
 
-    // --- 1. RTP SİSTEMİ ---
     private void openRtpMenu(Player player) {
         Inventory inv = Bukkit.createInventory(null, 9, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- RTP");
         
@@ -164,7 +170,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
 
         Location loc = new Location(targetWorld, x + 0.5, y, z + 0.5);
         
-        // Boşluk, lav ve su kontrolü
         Material ground = loc.clone().subtract(0, 1, 0).getBlock().getType();
         if (ground == Material.LAVA || ground == Material.WATER || ground == Material.AIR) {
             player.sendMessage(PREFIX + "Güvenli yer bulunamadı, tekrar deneniyor...");
@@ -194,7 +199,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         target.sendMessage(PREFIX + player.getName() + " ile birlikte ışınlandın!");
     }
 
-    // --- 2. CLEARLAG SİSTEMİ ---
     private void startClearLagTask() {
         new BukkitRunnable() {
             int timer = 600;
@@ -223,7 +227,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         }.runTaskTimer(this, 0L, 20L);
     }
 
-    // --- 3. PAZAR SİSTEMİ ---
     private void handleMarketCommand(Player player, String[] args) {
         if (args.length > 0 && args[0].equalsIgnoreCase("sat")) {
             if (args.length < 2) { player.sendMessage(PREFIX + "Kullanım: /pazar sat <fiyat>"); return; }
@@ -256,7 +259,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.openInventory(inv);
     }
 
-    // --- 4. SİPARİŞ SİSTEMİ ---
     private void handleOrderCommand(Player player, String[] args) {
         if (args.length > 0 && args[0].equalsIgnoreCase("oluştur")) {
             if (args.length < 4) { player.sendMessage(PREFIX + "Kullanım: /sipariş oluştur <eşya> <miktar> <fiyat>"); return; }
@@ -284,7 +286,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.openInventory(inv);
     }
 
-    // --- 5. TAB VE SCOREBOARD SİSTEMİ ---
     private void startScoreboardTask() {
         new BukkitRunnable() {
             @Override
@@ -318,7 +319,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.setScoreboard(board);
     }
 
-    // --- 9. TPA SİSTEMİ ---
     private void handleTpa(Player player, String[] args, boolean isHere) {
         if (args.length < 1) { player.sendMessage(PREFIX + "Kullanım: /tpa <oyuncu>"); return; }
         Player target = Bukkit.getPlayer(args[0]);
@@ -345,7 +345,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.sendMessage(PREFIX + "İstek reddedildi.");
     }
 
-    // --- 11. AMETİST ALETLER ---
     private void openSellMenu(Player player) {
         Inventory inv = Bukkit.createInventory(null, 54, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- Satış Menüsü");
         ItemStack confirm = new ItemStack(Material.LIME_STAINED_GLASS_PANE);
@@ -408,7 +407,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         return 100.0;
     }
 
-    // --- 12. EKONOMİ ---
     private void handleEconomy(Player player, String cmd, String[] args) {
         if (args.length < 2) return;
         Player target = Bukkit.getPlayer(args[0]);
@@ -424,7 +422,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         }
     }
 
-    // --- 13. WARP SİSTEMİ ---
     private void handleWarp(Player player, String[] args) {
         if (args.length < 1) return;
         if (args[0].equalsIgnoreCase("set") && player.isOp()) {
@@ -439,8 +436,6 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
     private UserData getOrCreateData(UUID uuid) {
         return playerData.computeIfAbsent(uuid, k -> new UserData());
     }
-
-    private void startKeyTimerTask() {}
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
