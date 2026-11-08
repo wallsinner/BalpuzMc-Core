@@ -1,13 +1,18 @@
 package com.balpuzmc.core;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.Chest;
 import org.bukkit.command.*;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -26,6 +31,7 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
     private final Map<UUID, UserData> playerData = new HashMap<>();
     private final Map<UUID, UUID> tpaRequests = new HashMap<>();
     private final Map<String, LocationData> warps = new HashMap<>();
+    private final List<MarketItem> marketItems = new ArrayList<>();
     private final List<OrderData> orders = new ArrayList<>();
     private File dataFile;
     private FileConfiguration dataConfig;
@@ -77,10 +83,12 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         
         if (cmd.equals("rtp")) {
             openRtpMenu(player);
+        } else if (cmd.equals("rtpq")) {
+            handleRtpQ(player, args);
         } else if (cmd.equals("pazar")) {
-            openMarketMenu(player);
+            handleMarketCommand(player, args);
         } else if (cmd.equals("siparis")) {
-            openOrderMenu(player, args);
+            handleOrderCommand(player, args);
         } else if (cmd.equals("sat")) {
             openSellMenu(player);
         } else if (cmd.equals("invsee")) {
@@ -107,6 +115,7 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         return true;
     }
 
+    // --- 1. RTP SİSTEMİ ---
     private void openRtpMenu(Player player) {
         Inventory inv = Bukkit.createInventory(null, 9, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- RTP");
         
@@ -131,6 +140,61 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.openInventory(inv);
     }
 
+    private void executeRtp(Player player, String type) {
+        Random rand = new Random();
+        World targetWorld;
+        int bound;
+
+        if (type.equals("nether")) {
+            targetWorld = Bukkit.getWorld("world_nether");
+            if (targetWorld == null) targetWorld = Bukkit.getWorlds().get(0);
+            bound = 1000;
+        } else if (type.equals("end")) {
+            targetWorld = Bukkit.getWorld("world_the_end");
+            if (targetWorld == null) targetWorld = Bukkit.getWorlds().get(0);
+            bound = 2000;
+        } else {
+            targetWorld = Bukkit.getWorlds().get(0);
+            bound = 2000;
+        }
+
+        int x = rand.nextInt(bound * 2) - bound;
+        int z = rand.nextInt(bound * 2) - bound;
+        int y = targetWorld.getHighestBlockYAt(x, z) + 1;
+
+        Location loc = new Location(targetWorld, x + 0.5, y, z + 0.5);
+        
+        // Boşluk, lav ve su kontrolü
+        Material ground = loc.clone().subtract(0, 1, 0).getBlock().getType();
+        if (ground == Material.LAVA || ground == Material.WATER || ground == Material.AIR) {
+            player.sendMessage(PREFIX + "Güvenli yer bulunamadı, tekrar deneniyor...");
+            executeRtp(player, type);
+            return;
+        }
+
+        player.teleport(loc);
+        player.sendMessage(PREFIX + "Rastgele bölgeye ışınlandın!");
+    }
+
+    private void handleRtpQ(Player player, String[] args) {
+        if (args.length < 1) { player.sendMessage(PREFIX + "Kullanım: /rtpq <oyuncu>"); return; }
+        Player target = Bukkit.getPlayer(args[0]);
+        if (target == null) { player.sendMessage(PREFIX + "Oyuncu bulunamadı!"); return; }
+        
+        Random rand = new Random();
+        World w = player.getWorld();
+        int x = rand.nextInt(4000) - 2000;
+        int z = rand.nextInt(4000) - 2000;
+        int y = w.getHighestBlockYAt(x, z) + 1;
+
+        Location loc = new Location(w, x + 0.5, y, z + 0.5);
+        player.teleport(loc);
+        target.teleport(loc);
+        player.sendMessage(PREFIX + target.getName() + " ile birlikte rastgele bir yere ışınlandın!");
+        target.sendMessage(PREFIX + player.getName() + " ile birlikte ışınlandın!");
+    }
+
+    // --- 2. CLEARLAG SİSTEMİ ---
     private void startClearLagTask() {
         new BukkitRunnable() {
             int timer = 600;
@@ -144,7 +208,7 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
                 if (timer <= 5 && timer > 0) Bukkit.broadcastMessage(PREFIX + "§cTemizlik: " + timer);
                 if (timer <= 0) {
                     int count = 0;
-                    for (org.bukkit.World w : Bukkit.getWorlds()) {
+                    for (World w : Bukkit.getWorlds()) {
                         for (org.bukkit.entity.Entity e : w.getEntities()) {
                             if (e instanceof org.bukkit.entity.Item) {
                                 e.remove();
@@ -159,20 +223,68 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         }.runTaskTimer(this, 0L, 20L);
     }
 
-    private void openMarketMenu(Player player) {
+    // --- 3. PAZAR SİSTEMİ ---
+    private void handleMarketCommand(Player player, String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("sat")) {
+            if (args.length < 2) { player.sendMessage(PREFIX + "Kullanım: /pazar sat <fiyat>"); return; }
+            ItemStack item = player.getInventory().getItemInMainHand();
+            if (item.getType() == Material.AIR) { player.sendMessage(PREFIX + "Elinde satılacak bir eşya yok!"); return; }
+            
+            double price;
+            try { price = Double.parseDouble(args[1]); } catch (Exception e) { player.sendMessage(PREFIX + "Geçersiz fiyat!"); return; }
+
+            marketItems.add(new MarketItem(player.getName(), item.clone(), price));
+            player.getInventory().setItemInMainHand(new ItemStack(Material.AIR));
+            player.sendMessage(PREFIX + "Eşya pazara başarıyla eklendi!");
+            return;
+        }
+
         Inventory inv = Bukkit.createInventory(null, 27, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- Pazar");
+        int slot = 0;
+        for (MarketItem mi : marketItems) {
+            if (slot >= 27) break;
+            ItemStack display = mi.item.clone();
+            ItemMeta meta = display.getItemMeta();
+            List<String> lore = meta.hasLore() ? meta.getLore() : new ArrayList<>();
+            lore.add("§8----------------");
+            lore.add("§7Satıcı: §f" + mi.seller);
+            lore.add("§7Fiyat: §a$" + mi.price);
+            meta.setLore(lore);
+            display.setItemMeta(meta);
+            inv.setItem(slot++, display);
+        }
         player.openInventory(inv);
     }
 
-    private void openSellMenu(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 54, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- Satış");
+    // --- 4. SİPARİŞ SİSTEMİ ---
+    private void handleOrderCommand(Player player, String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("oluştur")) {
+            if (args.length < 4) { player.sendMessage(PREFIX + "Kullanım: /sipariş oluştur <eşya> <miktar> <fiyat>"); return; }
+            Material mat = Material.matchMaterial(args[1].toUpperCase());
+            if (mat == null) { player.sendMessage(PREFIX + "Geçersiz eşya kodu!"); return; }
+            int amount = Integer.parseInt(args[2]);
+            double price = Double.parseDouble(args[3]);
+
+            orders.add(new OrderData(player.getName(), mat, amount, price));
+            player.sendMessage(PREFIX + "Sipariş başarıyla oluşturuldu!");
+            return;
+        }
+
+        Inventory inv = Bukkit.createInventory(null, 27, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- Siparişler");
+        int slot = 0;
+        for (OrderData od : orders) {
+            if (slot >= 27) break;
+            ItemStack item = new ItemStack(od.material, od.amount);
+            ItemMeta meta = item.getItemMeta();
+            meta.setDisplayName("§eSipariş: " + od.material.name());
+            meta.setLore(List.of("§7Veren: " + od.buyer, "§7Ödül: $" + od.price));
+            item.setItemMeta(meta);
+            inv.setItem(slot++, item);
+        }
         player.openInventory(inv);
     }
 
-    private void openOrderMenu(Player player, String[] args) {
-        player.sendMessage(PREFIX + "Sipariş sistemi aktif. /sipariş oluştur <kod> <miktar> <fiyat>");
-    }
-
+    // --- 5. TAB VE SCOREBOARD SİSTEMİ ---
     private void startScoreboardTask() {
         new BukkitRunnable() {
             @Override
@@ -206,6 +318,7 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.setScoreboard(board);
     }
 
+    // --- 9. TPA SİSTEMİ ---
     private void handleTpa(Player player, String[] args, boolean isHere) {
         if (args.length < 1) { player.sendMessage(PREFIX + "Kullanım: /tpa <oyuncu>"); return; }
         Player target = Bukkit.getPlayer(args[0]);
@@ -232,15 +345,70 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         player.sendMessage(PREFIX + "İstek reddedildi.");
     }
 
+    // --- 11. AMETİST ALETLER ---
+    private void openSellMenu(Player player) {
+        Inventory inv = Bukkit.createInventory(null, 54, "§9§lʙᴀʟᴘᴜᴢᴍᴄ §8- Satış Menüsü");
+        ItemStack confirm = new ItemStack(Material.LIME_STAINED_GLASS_PANE);
+        ItemMeta cm = confirm.getItemMeta();
+        cm.setDisplayName("§a§lTümünü Sat");
+        confirm.setItemMeta(cm);
+        inv.setItem(53, confirm);
+        player.openInventory(inv);
+    }
+
     private void giveAmetystTools(Player player) {
         ItemStack pick = new ItemStack(Material.NETHERITE_PICKAXE);
         ItemMeta meta = pick.getItemMeta();
         meta.setDisplayName("§d✦ Ametist Kazma");
         pick.setItemMeta(meta);
-        player.getInventory().addItem(pick);
+
+        ItemStack axe = new ItemStack(Material.NETHERITE_AXE);
+        ItemMeta axem = axe.getItemMeta();
+        axem.setDisplayName("§d✦ Ametist Balta");
+        axe.setItemMeta(axem);
+
+        player.getInventory().addItem(pick, axe);
         player.sendMessage(PREFIX + "Ametist aletler verildi.");
     }
 
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName() && item.getItemMeta().getDisplayName().contains("Ametist Kazma")) {
+            Location loc = event.getBlock().getLocation();
+            for (int x = -1; x <= 1; x++) {
+                for (int y = -1; y <= 1; y++) {
+                    for (int z = -1; z <= 1; z++) {
+                        Block b = loc.clone().add(x, y, z).getBlock();
+                        if (b.getType() != Material.BEDROCK) b.breakNaturally();
+                    }
+                }
+            }
+        } else if (item.hasItemMeta() && item.getItemMeta().hasDisplayName() && item.getItemMeta().getDisplayName().contains("Ametist Balta")) {
+            Block block = event.getBlock();
+            if (block.getType().name().endsWith("_LOG") || block.getType().name().endsWith("_WOOD")) {
+                block.breakNaturally();
+            } else if (block.getState() instanceof Chest chest) {
+                for (ItemStack i : chest.getInventory().getContents()) {
+                    if (i != null && i.getType() != Material.AIR) {
+                        UserData data = getOrCreateData(player.getUniqueId());
+                        data.money += getSellPrice(i.getType()) * i.getAmount();
+                    }
+                }
+                chest.getInventory().clear();
+                player.sendMessage(PREFIX + "Sandıktaki tüm eşyalar /sat ile dönüştürüldü!");
+            }
+        }
+    }
+
+    private double getSellPrice(Material mat) {
+        if (mat == Material.NETHERITE_INGOT) return 5000000.0;
+        if (mat == Material.DIAMOND) return 10000.0;
+        return 100.0;
+    }
+
+    // --- 12. EKONOMİ ---
     private void handleEconomy(Player player, String cmd, String[] args) {
         if (args.length < 2) return;
         Player target = Bukkit.getPlayer(args[0]);
@@ -256,9 +424,10 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
         }
     }
 
+    // --- 13. WARP SİSTEMİ ---
     private void handleWarp(Player player, String[] args) {
         if (args.length < 1) return;
-        if (args[0].equalsIgnoreCase("set") && player.isOP()) {
+        if (args[0].equalsIgnoreCase("set") && player.isOp()) {
             warps.put(args[1], new LocationData(player.getLocation()));
             player.sendMessage(PREFIX + "Warp oluşturuldu.");
         } else {
@@ -275,7 +444,31 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getView().getTitle().contains("ʙᴀʟᴘᴜᴢᴍᴄ")) {
+        String title = event.getView().getTitle();
+        if (title.contains("ʙᴀʟᴘᴜᴢᴍᴄ §8- RTP")) {
+            event.setCancelled(true);
+            Player p = (Player) event.getWhoClicked();
+            if (event.getSlot() == 2) executeRtp(p, "nether");
+            if (event.getSlot() == 4) executeRtp(p, "world");
+            if (event.getSlot() == 6) executeRtp(p, "end");
+            p.closeInventory();
+        } else if (title.contains("Satış Menüsü")) {
+            if (event.getRawSlot() == 53) {
+                event.setCancelled(true);
+                Player p = (Player) event.getWhoClicked();
+                double totalEarned = 0;
+                for (int i = 0; i < 53; i++) {
+                    ItemStack item = event.getInventory().getItem(i);
+                    if (item != null && item.getType() != Material.AIR) {
+                        totalEarned += getSellPrice(item.getType()) * item.getAmount();
+                        event.getInventory().setItem(i, null);
+                    }
+                }
+                UserData data = getOrCreateData(p.getUniqueId());
+                data.money += totalEarned;
+                p.sendMessage(PREFIX + "Eşyalar satıldı! Kazanılan: $" + totalEarned);
+            }
+        } else if (title.contains("ʙᴀʟᴘᴜᴢᴍᴄ")) {
             event.setCancelled(true);
         }
     }
@@ -290,14 +483,22 @@ public final class BalpuzCore extends JavaPlugin implements Listener {
 
     private static class LocationData {
         String world; double x, y, z;
-        LocationData(org.bukkit.Location l) {
+        LocationData(Location l) {
             this.world = l.getWorld().getName();
             this.x = l.getX(); this.y = l.getY(); this.z = l.getZ();
         }
-        org.bukkit.Location toLocation() {
-            return new org.bukkit.Location(Bukkit.getWorld(world), x, y, z);
+        Location toLocation() {
+            return new Location(Bukkit.getWorld(world), x, y, z);
         }
     }
 
-    private static class OrderData {}
+    private static class MarketItem {
+        String seller; ItemStack item; double price;
+        MarketItem(String s, ItemStack i, double p) { this.seller = s; this.item = i; this.price = p; }
+    }
+
+    private static class OrderData {
+        String buyer; Material material; int amount; double price;
+        OrderData(String b, Material m, int a, double p) { this.buyer = b; this.material = m; this.amount = a; this.price = p; }
+    }
 }
